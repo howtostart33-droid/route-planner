@@ -59,6 +59,46 @@ const RoutePlanner = () => {
     ["Mohakhali", "Gulistan", 7.0]
   ];
 
+  // Route themes
+  const ROUTE_THEMES = {
+    "Ocean Blue": {
+      color: "#1D4ED8",
+      weight: 6,
+      dashArray: "10, 10",
+      className: "ocean-blue"
+    },
+    "Sunset Glow": {
+      color: "#EA580C",
+      weight: 6,
+      dashArray: "15, 5",
+      className: "sunset-glow"
+    },
+    "Emerald Dream": {
+      color: "#047857",
+      weight: 6,
+      dashArray: "5, 15",
+      className: "emerald-dream"
+    },
+    "Royal Purple": {
+      color: "#7E22CE",
+      weight: 6,
+      dashArray: "20, 10",
+      className: "royal-purple"
+    },
+    "Fiery Red": {
+      color: "#DC2626",
+      weight: 6,
+      dashArray: "8, 8",
+      className: "fiery-red"
+    },
+    "Golden Trail": {
+      color: "#D97706",
+      weight: 6,
+      dashArray: "12, 6",
+      className: "golden-trail"
+    }
+  };
+
   // Calculate distances based on roads
   const calculateDistances = (roads) => {
     const distances = {};
@@ -87,6 +127,7 @@ const RoutePlanner = () => {
   const [showMatrix, setShowMatrix] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedStep, setSelectedStep] = useState(null);
+  const [routeTheme, setRouteTheme] = useState('Ocean Blue');
   const mapRef = useRef(null);
   const leafletMapRef = useRef(null);
   const markersRef = useRef({});
@@ -209,15 +250,20 @@ const RoutePlanner = () => {
   useEffect(() => {
     if (!mapRef.current) return;
     
-    // Create map centered on Dhaka
-    const map = L.map(mapRef.current).setView([23.8103, 90.4125], 12);
+    // Create map centered on Dhaka with the previous theme
+    const map = L.map(mapRef.current, {
+      zoomControl: true,
+      doubleClickZoom: true,
+      scrollWheelZoom: true,
+      dragging: true
+    }).setView([23.8103, 90.4125], 12);
     leafletMapRef.current = map;
     
-    // Add CARTO dark tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19
+    // Add OpenStreetMap tiles with previous styling
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 18,
+      className: 'custom-tile-layer'
     }).addTo(map);
     
     // Add location markers
@@ -244,17 +290,96 @@ const RoutePlanner = () => {
       markersRef.current[id] = { marker, label };
     });
     
+    // Add custom CSS for map tiles and route themes
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .custom-tile-layer {
+        filter: brightness(0.9) contrast(1.1) saturate(1.2);
+      }
+      
+      .leaflet-container {
+        background: #1a1a2e;
+      }
+      
+      .location-label {
+        font-weight: bold;
+        color: white;
+        text-shadow: 1px 1px 2px black;
+        font-size: 12px;
+      }
+      
+      /* Route theme styles */
+      .ocean-blue {
+        filter: drop-shadow(0 0 5px #1D4ED8);
+      }
+      
+      .sunset-glow {
+        filter: drop-shadow(0 0 5px #EA580C);
+        animation: pulse-orange 1.5s infinite alternate;
+      }
+      
+      .emerald-dream {
+        filter: drop-shadow(0 0 5px #047857);
+        animation: shimmer-green 2s infinite linear;
+      }
+      
+      .royal-purple {
+        filter: drop-shadow(0 0 5px #7E22CE);
+        animation: glow-purple 2s infinite alternate;
+      }
+      
+      .fiery-red {
+        filter: drop-shadow(0 0 5px #DC2626);
+        animation: flicker-red 1s infinite alternate;
+      }
+      
+      .golden-trail {
+        filter: drop-shadow(0 0 5px #D97706);
+        animation: shine-yellow 3s infinite linear;
+      }
+      
+      @keyframes pulse-orange {
+        0% { stroke-opacity: 0.7; }
+        100% { stroke-opacity: 1; }
+      }
+      
+      @keyframes shimmer-green {
+        0% { stroke-dashoffset: 0; }
+        100% { stroke-dashoffset: 20; }
+      }
+      
+      @keyframes glow-purple {
+        0% { filter: drop-shadow(0 0 5px #7E22CE); }
+        100% { filter: drop-shadow(0 0 15px #7E22CE); }
+      }
+      
+      @keyframes flicker-red {
+        0% { opacity: 0.7; }
+        50% { opacity: 1; }
+        100% { opacity: 0.8; }
+      }
+      
+      @keyframes shine-yellow {
+        0% { stroke-dashoffset: 0; }
+        100% { stroke-dashoffset: 30; }
+      }
+    `;
+    document.head.appendChild(style);
+    
     // Initial route calculation
     const routeResult = dijkstra(start, end);
     setResult(routeResult);
     
     // Cleanup function
     return () => {
+      if (style.parentNode) {
+        style.parentNode.removeChild(style);
+      }
       map.remove();
     };
   }, []);
   
-  // Update map when result changes
+  // Update map when result or theme changes
   useEffect(() => {
     if (!leafletMapRef.current || !result) return;
     
@@ -317,12 +442,15 @@ const RoutePlanner = () => {
         leafletMapRef.current.removeLayer(routeLineRef.current);
       }
       
-      // Draw new route line
+      // Draw new route line with selected theme
       const routeCoords = result.path.map(id => LOCATIONS[id]);
+      const theme = ROUTE_THEMES[routeTheme];
       routeLineRef.current = L.polyline(routeCoords, {
-        color: '#1D4ED8',
-        weight: 6,
-        opacity: 0.8
+        color: theme.color,
+        weight: theme.weight,
+        opacity: 0.8,
+        dashArray: theme.dashArray,
+        className: theme.className
       }).addTo(leafletMapRef.current);
       
       // Fit map to route bounds
@@ -336,7 +464,7 @@ const RoutePlanner = () => {
     return () => {
       animationRefs.current.forEach(id => clearTimeout(id));
     };
-  }, [result, start, end]);
+  }, [result, start, end, routeTheme]);
   
   const handleStepClick = (step) => {
     setSelectedStep(step);
@@ -498,6 +626,19 @@ const RoutePlanner = () => {
         <div className="visualization-header">
           <h2 className="panel-title">Route Visualization</h2>
           <div className="viz-controls">
+            <div className="theme-selector">
+              <label htmlFor="route-theme">Route Theme:</label>
+              <select 
+                id="route-theme" 
+                value={routeTheme} 
+                onChange={(e) => setRouteTheme(e.target.value)}
+                className="theme-select"
+              >
+                {Object.keys(ROUTE_THEMES).map(theme => (
+                  <option key={theme} value={theme}>{theme}</option>
+                ))}
+              </select>
+            </div>
             <button onClick={centerRoute} className="control-btn">
               Center Route
             </button>
@@ -621,4 +762,4 @@ const RoutePlanner = () => {
   );
 };
 
-export default RoutePlanner;
+export default RoutePlanner
